@@ -2,7 +2,7 @@ import { Client, VideoLinks } from 'kodikwrapper';
 
 const KODIK_TOKEN = process.env.KODIK_TOKEN;
 
-// Настраиваем домен плеера и endpoint один раз
+// Настраиваем endpoint один раз
 VideoLinks.config({
   playerDomain: 'kodikplayer.com',
   videoInfoEndpoint: '/ftor',
@@ -46,8 +46,8 @@ export default async function handler(req, res) {
     }
 
     const anime = searchResult.results[0];
-    
-    // Ссылка уже должна работать, так как config задан
+
+    // Получаем ссылки — config уже задан, поэтому endpoint подставится сам
     const links = await VideoLinks.getLinks({ link: anime.link });
 
     const qualityKey = String(quality);
