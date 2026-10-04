@@ -13,6 +13,33 @@ function getClient() {
   return client;
 }
 
+/**
+ * Получение ссылок с автоматическим определением актуального endpoint.
+ * Kodik часто меняет endpoint, поэтому getLinks напрямую может падать.
+ */
+async function getLinksWithActualEndpoint(link) {
+  // 1. Парсим ссылку, чтобы получить URL чанка с плеером
+  const parsedLink = await VideoLinks.parseLink({
+    link,
+    extended: true,
+  });
+
+  if (!parsedLink.ex?.playerSingleUrl) {
+    throw new Error('Не удалось получить ссылку на чанк с плеером');
+  }
+
+  // 2. Получаем актуальный endpoint
+  const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
+    parsedLink.ex.playerSingleUrl
+  );
+
+  // 3. Получаем ссылки с правильным endpoint
+  return await VideoLinks.getLinks({
+    link,
+    videoInfoEndpoint: endpoint,
+  });
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -29,6 +56,7 @@ export default async function handler(req, res) {
   try {
     const kodikClient = getClient();
 
+    // 1. Поиск аниме по Shikimori ID
     const searchResult = await kodikClient.search({
       shikimori_id: String(shikimori_id),
     });
@@ -40,8 +68,11 @@ export default async function handler(req, res) {
     }
 
     const anime = searchResult.results[0];
-    const links = await VideoLinks.getLinks({ link: anime.link });
 
+    // 2. Получаем ссылки с актуальным endpoint
+    const links = await getLinksWithActualEndpoint(anime.link);
+
+    // 3. Выбираем нужное качество
     const qualityKey = String(quality);
     if (!links?.[qualityKey]) {
       const available = links ? Object.keys(links).join(', ') : 'none';
@@ -50,6 +81,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // 4. Возвращаем результат
     res.status(200).json({
       url: links[qualityKey][0].src,
       quality: Number(quality),
