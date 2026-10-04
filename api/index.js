@@ -1,5 +1,4 @@
-import aniparsec from 'aniparsec-ru';
-const { AniParsec } = aniparsec;
+const { AniParsec } = require('aniparsec-ru');
 
 const KODIK_TOKEN = process.env.KODIK_TOKEN;
 
@@ -8,7 +7,7 @@ const parser = new AniParsec({
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 });
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -44,4 +43,4 @@ export default async function handler(req, res) {
     console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
-}
+};
