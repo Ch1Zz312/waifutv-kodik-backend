@@ -1,20 +1,21 @@
 import express from 'express';
 import cors from 'cors';
-import { Client, VideoLinks } from 'kodikwrapper';
+// Импортируем Client, VideoLinks и getPublicToken как отдельные сущности
+import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
 
 const app = express();
 app.use(cors());
 
-// Токен можно получить автоматически при старте
 let client = null;
 
 async function getClient() {
   if (client) return client;
   
-  // Получаем публичный токен
-  const token = await Client.getPublicToken();
+  // Получаем публичный токен через отдельную функцию
+  const token = await getPublicToken();
   console.log('Kodik token received:', token ? 'OK' : 'FAIL');
   
+  // Создаём клиент с токеном
   client = Client.fromToken(token);
   return client;
 }
@@ -47,23 +48,9 @@ app.get('/video', async (req, res) => {
     const anime = searchResult.results[0];
     console.log('Found:', anime.title, 'Link:', anime.link);
     
-    // 2. Получаем ссылки с автоматическим определением endpoint
-    const parsedLink = await VideoLinks.parseLink({
-      link: anime.link,
-      extended: true,
-    });
-    
-    if (!parsedLink.ex?.playerSingleUrl) {
-      return res.status(500).json({ error: 'Не удалось получить ссылку на плеер' });
-    }
-    
-    const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
-      parsedLink.ex.playerSingleUrl
-    );
-    
+    // 2. Получаем ссылки на видео
     const links = await VideoLinks.getLinks({
       link: anime.link,
-      videoInfoEndpoint: endpoint,
     });
     
     // 3. Выбираем нужное качество
