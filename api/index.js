@@ -1,22 +1,20 @@
-import express from 'express';
-import cors from 'cors';
 import { AniParsec } from 'aniparsec-ru';
 
-const app = express();
-app.use(cors());
-
-// Создаём парсер с явным User-Agent
 const parser = new AniParsec({
-  userAgent:
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 });
 
-app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'WaifuTV Kodik Backend v6' });
-});
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-app.get('/video', async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const { shikimori_id, episode = 1, quality = 720 } = req.query;
+
   if (!shikimori_id) {
     return res.status(400).json({ error: 'shikimori_id is required' });
   }
@@ -32,7 +30,7 @@ app.get('/video', async (req, res) => {
       return res.status(404).json({ error: 'Видео не найдено' });
     }
 
-    res.json({
+    res.status(200).json({
       url: video.url,
       quality: Number(quality),
       allQualities: video.allQualities || {},
@@ -42,7 +40,4 @@ app.get('/video', async (req, res) => {
     console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+}
