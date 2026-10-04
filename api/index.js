@@ -1,4 +1,17 @@
-const ANILIBRIA_API = 'https://aniliberty.top/api/v1';
+import { Client, VideoLinks } from 'kodikwrapper';
+
+const KODIK_TOKEN = process.env.KODIK_TOKEN;
+
+let client = null;
+
+function getClient() {
+  if (client) return client;
+  if (!KODIK_TOKEN) {
+    throw new Error('KODIK_TOKEN не настроен в Environment Variables Vercel');
+  }
+  client = Client.fromToken(KODIK_TOKEN);
+  return client;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -7,50 +20,41 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { title, shikimori_id, episode = 1 } = req.query;
+  const { shikimori_id, episode = 1, quality = 720 } = req.query;
 
-  if (!title && !shikimori_id) {
-    return res.status(400).json({ error: 'title or shikimori_id is required' });
+  if (!shikimori_id) {
+    return res.status(400).json({ error: 'shikimori_id is required' });
   }
 
   try {
-    const searchQuery = title || String(shikimori_id);
-    const searchResp = await fetch(
-      `${ANILIBRIA_API}/app/search/releases?search=${encodeURIComponent(searchQuery)}`
-    );
-    const searchData = await searchResp.json();
+    const kodikClient = getClient();
 
-    if (!searchData || !Array.isArray(searchData) || searchData.length === 0) {
+    const searchResult = await kodikClient.search({
+      shikimori_id: String(shikimori_id),
+    });
+
+    if (!searchResult?.results?.length) {
       return res.status(404).json({
-        error: `Аниме "${searchQuery}" не найдено в AniLibria`,
+        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik`,
       });
     }
 
-    const release = searchData[0];
-    const releaseId = release.id;
+    const anime = searchResult.results[0];
+    const links = await VideoLinks.getLinks({ link: anime.link });
 
-    const infoResp = await fetch(`${ANILIBRIA_API}/anime/releases/${releaseId}`);
-    const infoData = await infoResp.json();
-
-    if (!infoData || !infoData.episodes || infoData.episodes.length === 0) {
-      return res.status(404).json({ error: 'У релиза нет доступных серий' });
-    }
-
-    const epIndex = Math.max(0, Number(episode) - 1);
-    const ep = infoData.episodes[epIndex] || infoData.episodes[0];
-
-    const url = ep.hls_720 || ep.hls_1080 || ep.hls_480 || ep.hls_360;
-
-    if (!url) {
-      return res.status(404).json({ error: 'Нет доступных HLS-ссылок' });
+    const qualityKey = String(quality);
+    if (!links?.[qualityKey]) {
+      const available = links ? Object.keys(links).join(', ') : 'none';
+      return res.status(404).json({
+        error: `Качество ${quality}p не найдено. Доступно: ${available}`,
+      });
     }
 
     res.status(200).json({
-      url: url,
-      quality: ep.hls_720 ? 720 : (ep.hls_1080 ? 1080 : 480),
-      animeTitle: release.name?.main || release.name?.english || '',
-      totalEpisodes: infoData.episodes.length,
-      currentEpisode: Number(episode),
+      url: links[qualityKey][0].src,
+      quality: Number(quality),
+      allQualities: Object.keys(links),
+      animeTitle: anime.title,
     });
   } catch (e) {
     console.error('Error:', e.message);
