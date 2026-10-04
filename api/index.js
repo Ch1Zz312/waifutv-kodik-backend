@@ -1,9 +1,10 @@
-const { Anime365 } = require('anime365wrapper');
+import { AniParsec } from 'aniparsec-ru';
 
-// Создаём клиент — библиотека сама подберёт рабочее зеркало
-const api = new Anime365({ userAgent: 'WaifuTV/1.0' });
+const parser = new AniParsec({
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+});
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -17,53 +18,25 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // 1. Ищем сериал по Shikimori ID
-    const seriesList = await api.getSeries({ query: String(shikimori_id) });
-
-    if (!seriesList || seriesList.length === 0) {
-      return res.status(404).json({ error: `Аниме с Shikimori ID ${shikimori_id} не найдено` });
-    }
-
-    const series = seriesList[0];
-
-    // 2. Получаем список серий для этого сериала
-    const episodes = await api.getEpisodes({ series_id: series.id });
-
-    if (!episodes || episodes.length === 0) {
-      return res.status(404).json({ error: 'У сериала нет доступных серий' });
-    }
-
-    // 3. Выбираем нужную серию
-    const epIndex = Math.max(0, Number(episode) - 1);
-    const targetEpisode = episodes[epIndex] || episodes[0];
-
-    // 4. Получаем список переводов для этой серии
-    const translations = await api.getTranslations({ episode_id: targetEpisode.id });
-
-    if (!translations || translations.length === 0) {
-      return res.status(404).json({ error: 'Для этой серии нет переводов' });
-    }
-
-    // 5. Берём первый голосовой перевод (или любой)
-    const voiceTranslation = translations.find(t => t.type === 'voiceRu') || translations[0];
-
-    // 6. Получаем видео по ID перевода
-    const video = await api.getVideoById(voiceTranslation.id);
+    // getVideo автоматически пробует Kodik, потом Aniboom [citation:1][citation:6]
+    const video = await parser.getVideo({
+      shikimoriId: String(shikimori_id),
+      episode: Number(episode),
+      quality: 720,
+    });
 
     if (!video || !video.url) {
-      return res.status(404).json({ error: 'Ссылка на видео не найдена' });
+      return res.status(404).json({ error: 'Видео не найдено' });
     }
 
     res.status(200).json({
       url: video.url,
       quality: video.quality || 720,
-      animeTitle: series.title,
-      translationName: voiceTranslation.author,
-      totalEpisodes: episodes.length,
-      currentEpisode: Number(episode),
+      source: video.source || 'kodik',
+      animeTitle: video.title || '',
     });
   } catch (e) {
     console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
-};
+}
