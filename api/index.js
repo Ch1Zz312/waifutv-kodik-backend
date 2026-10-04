@@ -10,8 +10,9 @@ function getClient() {
   return client;
 }
 
-// Функция с getActualVideoInfoEndpoint
+// Функция, которая сначала находит актуальный endpoint, потом получает ссылки
 async function getLinksWithActualEndpoint(link) {
+  // 1. Парсим ссылку, чтобы получить URL чанка с плеером
   const parsedLink = await VideoLinks.parseLink({
     link,
     extended: true,
@@ -21,10 +22,12 @@ async function getLinksWithActualEndpoint(link) {
     throw new Error('Не могу получить ссылку на чанк с плеером');
   }
 
+  // 2. Получаем АКТУАЛЬНЫЙ endpoint
   const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
     parsedLink.ex.playerSingleUrl
   );
 
+  // 3. Получаем ссылки с правильным endpoint
   return await VideoLinks.getLinks({
     link,
     videoInfoEndpoint: endpoint,
@@ -46,17 +49,20 @@ export default async function handler(req, res) {
 
   try {
     const kodikClient = getClient();
+
     const searchResult = await kodikClient.search({
       shikimori_id: String(shikimori_id),
     });
 
     if (!searchResult?.results?.length) {
       return res.status(404).json({
-        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik`,
+        error: `Аниме с Shikimori ID ${shikimori_id} не найдено`,
       });
     }
 
     const anime = searchResult.results[0];
+
+    // Используем функцию с актуальным endpoint
     const links = await getLinksWithActualEndpoint(anime.link);
 
     const qualityKey = String(quality);
