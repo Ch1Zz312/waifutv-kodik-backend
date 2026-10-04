@@ -1,11 +1,37 @@
-const { AniParsec } = require('aniparsec-ru');
+import { Client, VideoLinks } from 'kodikwrapper';
 
-const parser = new AniParsec({
-  kodikToken: process.env.KODIK_TOKEN,
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-});
+const KODIK_TOKEN = process.env.KODIK_TOKEN;
 
-module.exports = async function handler(req, res) {
+let client = null;
+
+function getClient() {
+  if (client) return client;
+  client = Client.fromToken(KODIK_TOKEN);
+  return client;
+}
+
+// Функция с getActualVideoInfoEndpoint
+async function getLinksWithActualEndpoint(link) {
+  const parsedLink = await VideoLinks.parseLink({
+    link,
+    extended: true,
+  });
+
+  if (!parsedLink.ex?.playerSingleUrl) {
+    throw new Error('Не могу получить ссылку на чанк с плеером');
+  }
+
+  const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
+    parsedLink.ex.playerSingleUrl
+  );
+
+  return await VideoLinks.getLinks({
+    link,
+    videoInfoEndpoint: endpoint,
+  });
+}
+
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -19,28 +45,36 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Принудительно используем Aniboom как источник
-    const video = await parser.getVideo({
-      shikimoriId: String(shikimori_id),
-      episode: Number(episode),
-      quality: Number(quality),
-      source: 'aniboom',
+    const kodikClient = getClient();
+    const searchResult = await kodikClient.search({
+      shikimori_id: String(shikimori_id),
     });
 
-    if (!video || !video.url) {
+    if (!searchResult?.results?.length) {
       return res.status(404).json({
-        error: `Видео для Shikimori ID ${shikimori_id} не найдено в Aniboom`,
+        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik`,
+      });
+    }
+
+    const anime = searchResult.results[0];
+    const links = await getLinksWithActualEndpoint(anime.link);
+
+    const qualityKey = String(quality);
+    if (!links?.[qualityKey]) {
+      const available = links ? Object.keys(links).join(', ') : 'none';
+      return res.status(404).json({
+        error: `Качество ${quality}p не найдено. Доступно: ${available}`,
       });
     }
 
     res.status(200).json({
-      url: video.url,
-      quality: video.quality || Number(quality),
-      source: video.source || 'aniboom',
-      animeTitle: video.title || '',
+      url: links[qualityKey][0].src,
+      quality: Number(quality),
+      allQualities: Object.keys(links),
+      animeTitle: anime.title,
     });
   } catch (e) {
     console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
-};
+}
