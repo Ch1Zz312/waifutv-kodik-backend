@@ -14,39 +14,29 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { shikimori_id, episode = 1, quality = 720 } = req.query;
+  const { shikimori_id } = req.query;
 
   if (!shikimori_id) {
     return res.status(400).json({ error: 'shikimori_id is required' });
   }
 
   try {
-    // 1. Получаем список переводов для тайтла
-    const translations = await parser.getTranslations(String(shikimori_id));
-    console.log('Translations found:', translations?.length || 0);
-
-    // 2. Пробуем получить видео с первым доступным переводом
-    const video = await parser.getVideo({
-      shikimoriId: String(shikimori_id),
-      episode: Number(episode),
-      quality: Number(quality),
-      translationId: translations?.[0]?.id, // ← передаём ID перевода
-    });
-
-    if (!video || !video.url) {
-      return res.status(404).json({
-        error: `Видео для Shikimori ID ${shikimori_id} не найдено (переводы: ${translations?.length || 0})`,
-      });
-    }
+    // Получаем полную информацию о тайтле
+    const info = await parser.getTitleInfo(String(shikimori_id));
 
     res.status(200).json({
-      url: video.url,
-      quality: video.quality || Number(quality),
-      source: video.source || 'kodik',
-      animeTitle: video.title || '',
+      title: info.title,
+      episodes: info.episodes,
+      translationsCount: info.translations?.length || 0,
+      translations: info.translations,
+      availableSources: info.availableSources,
+      kodikLinks: info.links?.kodik,
+      aniboomLinks: info.links?.aniboom,
     });
   } catch (e) {
-    console.error('Error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ 
+      error: e.message,
+      stack: e.stack 
+    });
   }
 };
