@@ -1,17 +1,21 @@
-import { AniParsec } from 'aniparsec-ru';
+import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
 
-const parser = new AniParsec({
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-});
+let client = null;
+
+async function getClient() {
+  if (client) return client;
+  const token = await getPublicToken();
+  console.log('Kodik token:', token ? 'OK' : 'FAIL');
+  client = Client.fromToken(token);
+  return client;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { shikimori_id, episode = 1, quality = 720 } = req.query;
 
@@ -20,21 +24,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const video = await parser.getVideo({
-      shikimoriId: String(shikimori_id),
-      episode: Number(episode),
-      quality: Number(quality),
+    const kodikClient = await getClient();
+
+    const searchResult = await kodikClient.search({
+      shikimori_id: String(shikimori_id),
     });
 
-    if (!video || !video.url) {
-      return res.status(404).json({ error: 'Видео не найдено' });
+    if (!searchResult?.results?.length) {
+      return res.status(404).json({ error: `Аниме с ID ${shikimori_id} не найдено` });
+    }
+
+    const anime = searchResult.results[0];
+    const links = await VideoLinks.getLinks({ link: anime.link });
+
+    const qualityKey = String(quality);
+    if (!links?.[qualityKey]) {
+      const available = links ? Object.keys(links).join(', ') : 'none';
+      return res.status(404).json({ error: `Качество ${quality}p не найдено. Доступно: ${available}` });
     }
 
     res.status(200).json({
-      url: video.url,
+      url: links[qualityKey][0].src,
       quality: Number(quality),
-      allQualities: video.allQualities || {},
-      animeTitle: video.title || '',
+      allQualities: Object.keys(links),
+      animeTitle: anime.title,
     });
   } catch (e) {
     console.error('Error:', e.message);
