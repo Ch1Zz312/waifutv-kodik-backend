@@ -21,15 +21,21 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    // 1. Получаем список переводов для тайтла
+    const translations = await parser.getTranslations(String(shikimori_id));
+    console.log('Translations found:', translations?.length || 0);
+
+    // 2. Пробуем получить видео с первым доступным переводом
     const video = await parser.getVideo({
       shikimoriId: String(shikimori_id),
       episode: Number(episode),
       quality: Number(quality),
+      translationId: translations?.[0]?.id, // ← передаём ID перевода
     });
 
     if (!video || !video.url) {
       return res.status(404).json({
-        error: `Видео для Shikimori ID ${shikimori_id} не найдено`,
+        error: `Видео для Shikimori ID ${shikimori_id} не найдено (переводы: ${translations?.length || 0})`,
       });
     }
 
