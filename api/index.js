@@ -7,29 +7,28 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { shikimori_id, episode = 1 } = req.query;
+  const { title, shikimori_id, episode = 1 } = req.query;
 
-  if (!shikimori_id) {
-    return res.status(400).json({ error: 'shikimori_id is required' });
+  if (!title && !shikimori_id) {
+    return res.status(400).json({ error: 'title or shikimori_id is required' });
   }
 
   try {
-    // 1. Ищем релиз по Shikimori ID
+    const searchQuery = title || String(shikimori_id);
     const searchResp = await fetch(
-      `${ANILIBRIA_API}/app/search/releases?search=${shikimori_id}`
+      `${ANILIBRIA_API}/app/search/releases?search=${encodeURIComponent(searchQuery)}`
     );
     const searchData = await searchResp.json();
 
     if (!searchData || !Array.isArray(searchData) || searchData.length === 0) {
       return res.status(404).json({
-        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в AniLibria`,
+        error: `Аниме "${searchQuery}" не найдено в AniLibria`,
       });
     }
 
     const release = searchData[0];
     const releaseId = release.id;
 
-    // 2. Получаем список серий
     const infoResp = await fetch(`${ANILIBRIA_API}/anime/releases/${releaseId}`);
     const infoData = await infoResp.json();
 
@@ -37,7 +36,6 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'У релиза нет доступных серий' });
     }
 
-    // 3. Берём нужную серию
     const epIndex = Math.max(0, Number(episode) - 1);
     const ep = infoData.episodes[epIndex] || infoData.episodes[0];
 
