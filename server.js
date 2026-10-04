@@ -1,31 +1,26 @@
 import express from 'express';
 import cors from 'cors';
-import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
+import { Client, VideoLinks } from 'kodikwrapper';
 
 const app = express();
 app.use(cors());
 
-// Переменная для хранения токена
-let KODIK_TOKEN = null;
+// Токен можно получить автоматически при старте
+let client = null;
 
-// Функция для получения токена
-async function ensureToken() {
-  if (KODIK_TOKEN) return KODIK_TOKEN;
+async function getClient() {
+  if (client) return client;
   
-  try {
-    console.log('Trying auto token from player script...');
-    // Пытаемся получить токен автоматически
-    KODIK_TOKEN = await getPublicToken();
-    console.log('Token received automatically:', KODIK_TOKEN ? 'OK' : 'FAIL');
-    return KODIK_TOKEN;
-  } catch (e) {
-    console.error('Auto token failed:', e.message);
-    throw new Error('Could not get Kodik token automatically');
-  }
+  // Получаем публичный токен
+  const token = await Client.getPublicToken();
+  console.log('Kodik token received:', token ? 'OK' : 'FAIL');
+  
+  client = Client.fromToken(token);
+  return client;
 }
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'WaifuTV Kodik Backend v3' });
+  res.json({ status: 'ok', service: 'WaifuTV Kodik Backend' });
 });
 
 app.get('/video', async (req, res) => {
@@ -36,41 +31,50 @@ app.get('/video', async (req, res) => {
   }
 
   try {
-    // 1. Получаем токен
-    const token = await ensureToken();
+    const kodikClient = await getClient();
     
-    // 2. Создаём клиент с токеном
-    const client = Client.fromToken(token);
-    
-    // 3. Ищем аниме по Shikimori ID
-    const searchResult = await client.search({
+    // 1. Ищем аниме по Shikimori ID
+    const searchResult = await kodikClient.search({
       shikimori_id: String(shikimori_id),
     });
     
-    if (!searchResult || !searchResult.results || searchResult.results.length === 0) {
+    if (!searchResult?.results?.length) {
       return res.status(404).json({ 
-        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik` 
+        error: `Аниме с Shikimori ID ${shikimori_id} не найдено` 
       });
     }
     
     const anime = searchResult.results[0];
-    console.log('Found anime:', anime.title, 'Link:', anime.link);
+    console.log('Found:', anime.title, 'Link:', anime.link);
     
-    // 4. Получаем ссылки на видео из страницы плеера
-    const links = await VideoLinks.getLinks({
+    // 2. Получаем ссылки с автоматическим определением endpoint
+    const parsedLink = await VideoLinks.parseLink({
       link: anime.link,
+      extended: true,
     });
     
-    // 5. Выбираем нужное качество
+    if (!parsedLink.ex?.playerSingleUrl) {
+      return res.status(500).json({ error: 'Не удалось получить ссылку на плеер' });
+    }
+    
+    const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
+      parsedLink.ex.playerSingleUrl
+    );
+    
+    const links = await VideoLinks.getLinks({
+      link: anime.link,
+      videoInfoEndpoint: endpoint,
+    });
+    
+    // 3. Выбираем нужное качество
     const qualityKey = String(quality);
-    if (!links || !links[qualityKey]) {
+    if (!links?.[qualityKey]) {
       const available = links ? Object.keys(links).join(', ') : 'none';
       return res.status(404).json({ 
         error: `Качество ${quality}p не найдено. Доступно: ${available}` 
       });
     }
     
-    // 6. Возвращаем ссылку
     res.json({
       url: links[qualityKey][0].src,
       quality: Number(quality),
