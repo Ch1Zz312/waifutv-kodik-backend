@@ -7,10 +7,10 @@
     "start": "node server.js"
   },
   "dependencies": {
-  "express": "^4.19.2",
-  "kodikwrapper": "^3.0.6",
-  "cors": "^2.8.5"
-}
+    "express": "^4.19.2",
+    "kodikwrapper": "^3.0.6",
+    "cors": "^2.8.5"
+  },
   "engines": {
     "node": ">=20.0.0"
   }
