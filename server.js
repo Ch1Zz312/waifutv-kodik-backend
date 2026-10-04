@@ -1,83 +1,85 @@
 import express from 'express';
 import cors from 'cors';
-// Импортируем нужные классы из kodikwrapper
-import { Client, getPublicToken, VideoLinks } from 'kodikwrapper';
+import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
 
-// Токен и клиент будут храниться здесь
-let client = null;
+// Переменная для хранения токена
+let KODIK_TOKEN = null;
 
-// Функция для получения клиента с токеном
-async function getClient() {
-  if (client) return client;
-
+// Функция для получения токена
+async function ensureToken() {
+  if (KODIK_TOKEN) return KODIK_TOKEN;
+  
   try {
-    console.log('Attempting to get public token from Kodik...');
-    // Эта функция сама находит актуальный токен
-    const token = await getPublicToken();
-    console.log('Token received successfully!');
-
-    // Создаем клиент с этим токеном
-    client = Client.fromToken(token);
-    return client;
-  } catch (error) {
-    console.error('Failed to get token:', error);
-    throw new Error('Could not obtain Kodik token');
+    console.log('Trying auto token from player script...');
+    // Пытаемся получить токен автоматически
+    KODIK_TOKEN = await getPublicToken();
+    console.log('Token received automatically:', KODIK_TOKEN ? 'OK' : 'FAIL');
+    return KODIK_TOKEN;
+  } catch (e) {
+    console.error('Auto token failed:', e.message);
+    throw new Error('Could not get Kodik token automatically');
   }
 }
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'WaifuTV Kodik Backend' });
+  res.json({ status: 'ok', service: 'WaifuTV Kodik Backend v3' });
 });
 
 app.get('/video', async (req, res) => {
   const { shikimori_id, episode = 1, quality = 720 } = req.query;
+  
   if (!shikimori_id) {
     return res.status(400).json({ error: 'shikimori_id is required' });
   }
 
   try {
-    const kodikClient = await getClient();
-
-    // 1. Ищем аниме по Shikimori ID
-    const searchResult = await kodikClient.search({
+    // 1. Получаем токен
+    const token = await ensureToken();
+    
+    // 2. Создаём клиент с токеном
+    const client = Client.fromToken(token);
+    
+    // 3. Ищем аниме по Shikimori ID
+    const searchResult = await client.search({
       shikimori_id: String(shikimori_id),
     });
-
+    
     if (!searchResult || !searchResult.results || searchResult.results.length === 0) {
-      return res.status(404).json({
-        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik`
+      return res.status(404).json({ 
+        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik` 
       });
     }
-
-    // Берем первый результат
+    
     const anime = searchResult.results[0];
-
-    // 2. Получаем ссылки на видео для конкретной серии
+    console.log('Found anime:', anime.title, 'Link:', anime.link);
+    
+    // 4. Получаем ссылки на видео из страницы плеера
     const links = await VideoLinks.getLinks({
-      link: anime.link, // Ссылка на страницу плеера из результата поиска
+      link: anime.link,
     });
-
-    // Проверяем, есть ли нужное качество
-    if (!links || !links[quality]) {
-      return res.status(404).json({
-        error: `Качество ${quality}p не найдено. Доступные: ${Object.keys(links || {}).join(', ')}`
+    
+    // 5. Выбираем нужное качество
+    const qualityKey = String(quality);
+    if (!links || !links[qualityKey]) {
+      const available = links ? Object.keys(links).join(', ') : 'none';
+      return res.status(404).json({ 
+        error: `Качество ${quality}p не найдено. Доступно: ${available}` 
       });
     }
-
-    // 3. Возвращаем результат
+    
+    // 6. Возвращаем ссылку
     res.json({
-      url: links[quality][0].src, // Берем первую ссылку из массива
+      url: links[qualityKey][0].src,
       quality: Number(quality),
       allQualities: Object.keys(links),
       animeTitle: anime.title,
     });
-
+    
   } catch (e) {
-    console.error('Error in /video:', e);
+    console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
