@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "kodikwrapper": "^3.1.0",
+    "aniparsec-ru": "^1.0.5",
     "cors": "^2.8.5"
   },
   "engines": {
