@@ -2,7 +2,7 @@
   "name": "waifutv-kodik-backend",
   "version": "1.0.0",
   "dependencies": {
-    "kodikwrapper": "^3.1.0"
+    "anime365wrapper": "^3.0.1"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -1,86 +1,69 @@
-import { Client, VideoLinks } from 'kodikwrapper';
+const { Anime365 } = require('anime365wrapper');
 
-const KODIK_TOKEN = process.env.KODIK_TOKEN;
+// Создаём клиент — библиотека сама подберёт рабочее зеркало
+const api = new Anime365({ userAgent: 'WaifuTV/1.0' });
 
-let client = null;
-
-function getClient() {
-  if (client) return client;
-  client = Client.fromToken(KODIK_TOKEN);
-  return client;
-}
-
-// Функция, которая сначала находит актуальный endpoint, потом получает ссылки
-async function getLinksWithActualEndpoint(link) {
-  // 1. Парсим ссылку, чтобы получить URL чанка с плеером
-  const parsedLink = await VideoLinks.parseLink({
-    link,
-    extended: true,
-  });
-
-  if (!parsedLink.ex?.playerSingleUrl) {
-    throw new Error('Не могу получить ссылку на чанк с плеером');
-  }
-
-  // 2. Получаем АКТУАЛЬНЫЙ endpoint
-  const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
-    parsedLink.ex.playerSingleUrl
-  );
-
-  // 3. Получаем ссылки с правильным endpoint
-  return await VideoLinks.getLinks({
-    link,
-    videoInfoEndpoint: endpoint,
-  });
-}
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { shikimori_id, episode = 1, quality = 720 } = req.query;
+  const { shikimori_id, episode = 1 } = req.query;
 
   if (!shikimori_id) {
     return res.status(400).json({ error: 'shikimori_id is required' });
   }
 
   try {
-    const kodikClient = getClient();
+    // 1. Ищем сериал по Shikimori ID
+    const seriesList = await api.getSeries({ query: String(shikimori_id) });
 
-    const searchResult = await kodikClient.search({
-      shikimori_id: String(shikimori_id),
-    });
-
-    if (!searchResult?.results?.length) {
-      return res.status(404).json({
-        error: `Аниме с Shikimori ID ${shikimori_id} не найдено`,
-      });
+    if (!seriesList || seriesList.length === 0) {
+      return res.status(404).json({ error: `Аниме с Shikimori ID ${shikimori_id} не найдено` });
     }
 
-    const anime = searchResult.results[0];
+    const series = seriesList[0];
 
-    // Используем функцию с актуальным endpoint
-    const links = await getLinksWithActualEndpoint(anime.link);
+    // 2. Получаем список серий для этого сериала
+    const episodes = await api.getEpisodes({ series_id: series.id });
 
-    const qualityKey = String(quality);
-    if (!links?.[qualityKey]) {
-      const available = links ? Object.keys(links).join(', ') : 'none';
-      return res.status(404).json({
-        error: `Качество ${quality}p не найдено. Доступно: ${available}`,
-      });
+    if (!episodes || episodes.length === 0) {
+      return res.status(404).json({ error: 'У сериала нет доступных серий' });
+    }
+
+    // 3. Выбираем нужную серию
+    const epIndex = Math.max(0, Number(episode) - 1);
+    const targetEpisode = episodes[epIndex] || episodes[0];
+
+    // 4. Получаем список переводов для этой серии
+    const translations = await api.getTranslations({ episode_id: targetEpisode.id });
+
+    if (!translations || translations.length === 0) {
+      return res.status(404).json({ error: 'Для этой серии нет переводов' });
+    }
+
+    // 5. Берём первый голосовой перевод (или любой)
+    const voiceTranslation = translations.find(t => t.type === 'voiceRu') || translations[0];
+
+    // 6. Получаем видео по ID перевода
+    const video = await api.getVideoById(voiceTranslation.id);
+
+    if (!video || !video.url) {
+      return res.status(404).json({ error: 'Ссылка на видео не найдена' });
     }
 
     res.status(200).json({
-      url: links[qualityKey][0].src,
-      quality: Number(quality),
-      allQualities: Object.keys(links),
-      animeTitle: anime.title,
+      url: video.url,
+      quality: video.quality || 720,
+      animeTitle: series.title,
+      translationName: voiceTranslation.author,
+      totalEpisodes: episodes.length,
+      currentEpisode: Number(episode),
     });
   } catch (e) {
     console.error('Error:', e.message);
     res.status(500).json({ error: e.message });
   }
-}
+};
