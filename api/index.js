@@ -1,23 +1,11 @@
-import { Client, VideoLinks } from 'kodikwrapper';
+import { AniParsec } from 'aniparsec-ru';
 
 const KODIK_TOKEN = process.env.KODIK_TOKEN;
 
-// Настраиваем endpoint один раз
-VideoLinks.config({
-  playerDomain: 'kodikplayer.com',
-  videoInfoEndpoint: '/ftor',
+const parser = new AniParsec({
+  kodikToken: KODIK_TOKEN,
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 });
-
-let client = null;
-
-function getClient() {
-  if (client) return client;
-  if (!KODIK_TOKEN) {
-    throw new Error('KODIK_TOKEN не настроен в Environment Variables Vercel');
-  }
-  client = Client.fromToken(KODIK_TOKEN);
-  return client;
-}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -33,36 +21,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const kodikClient = getClient();
-
-    const searchResult = await kodikClient.search({
-      shikimori_id: String(shikimori_id),
+    // Единый метод getVideo() — сам пробует Kodik, потом Aniboom
+    const video = await parser.getVideo({
+      shikimoriId: String(shikimori_id),
+      episode: Number(episode),
+      quality: Number(quality),
     });
 
-    if (!searchResult?.results?.length) {
+    if (!video || !video.url) {
       return res.status(404).json({
-        error: `Аниме с Shikimori ID ${shikimori_id} не найдено в Kodik`,
-      });
-    }
-
-    const anime = searchResult.results[0];
-
-    // Получаем ссылки — config уже задан, поэтому endpoint подставится сам
-    const links = await VideoLinks.getLinks({ link: anime.link });
-
-    const qualityKey = String(quality);
-    if (!links?.[qualityKey]) {
-      const available = links ? Object.keys(links).join(', ') : 'none';
-      return res.status(404).json({
-        error: `Качество ${quality}p не найдено. Доступно: ${available}`,
+        error: `Видео для Shikimori ID ${shikimori_id} не найдено`,
       });
     }
 
     res.status(200).json({
-      url: links[qualityKey][0].src,
-      quality: Number(quality),
-      allQualities: Object.keys(links),
-      animeTitle: anime.title,
+      url: video.url,
+      quality: video.quality || Number(quality),
+      source: video.source || 'kodik',
+      animeTitle: video.title || '',
     });
   } catch (e) {
     console.error('Error:', e.message);
