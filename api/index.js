@@ -14,29 +14,63 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { shikimori_id } = req.query;
+  const { shikimori_id, episode = 1, quality = 720, translation_id } = req.query;
 
   if (!shikimori_id) {
     return res.status(400).json({ error: 'shikimori_id is required' });
   }
 
   try {
-    // Получаем полную информацию о тайтле
+    // 1. Получаем инфо о тайтле — там есть список переводов
     const info = await parser.getTitleInfo(String(shikimori_id));
 
+    if (!info || !info.translations || info.translations.length === 0) {
+      return res.status(404).json({
+        error: `Переводы для Shikimori ID ${shikimori_id} не найдены`,
+      });
+    }
+
+    // 2. Выбираем перевод:
+    //    - если передан translation_id — используем его
+    //    - иначе берём первый голосовой (voice)
+    let translationId;
+    if (translation_id) {
+      translationId = Number(translation_id);
+    } else {
+      const voiceTranslations = info.translations.filter(
+        (t) => t.type === 'voice'
+      );
+      const chosen = voiceTranslations[0] || info.translations[0];
+      translationId = chosen.id;
+    }
+
+    console.log('Using translationId:', translationId);
+
+    // 3. Получаем видео с явным translationId
+    const video = await parser.getVideo({
+      shikimoriId: String(shikimori_id),
+      episode: Number(episode),
+      quality: Number(quality),
+      translationId: translationId,
+    });
+
+    if (!video || !video.url) {
+      return res.status(404).json({
+        error: `Видео для Shikimori ID ${shikimori_id} не найдено (перевод ${translationId})`,
+        translationsCount: info.translations.length,
+      });
+    }
+
     res.status(200).json({
-      title: info.title,
-      episodes: info.episodes,
-      translationsCount: info.translations?.length || 0,
-      translations: info.translations,
-      availableSources: info.availableSources,
-      kodikLinks: info.links?.kodik,
-      aniboomLinks: info.links?.aniboom,
+      url: video.url,
+      quality: video.quality || Number(quality),
+      source: video.source || 'kodik',
+      animeTitle: video.title || info.title,
+      translationId: translationId,
+      totalEpisodes: info.episodes,
     });
   } catch (e) {
-    res.status(500).json({ 
-      error: e.message,
-      stack: e.stack 
-    });
+    console.error('Error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 };
