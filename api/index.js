@@ -1,4 +1,5 @@
-import { AniParsec } from 'aniparsec-ru';
+import aniparsec from 'aniparsec-ru';
+const { AniParsec } = aniparsec;
 
 const KODIK_TOKEN = process.env.KODIK_TOKEN;
 
@@ -21,7 +22,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Единый метод getVideo() — сам пробует Kodik, потом Aniboom
     const video = await parser.getVideo({
       shikimoriId: String(shikimori_id),
       episode: Number(episode),
