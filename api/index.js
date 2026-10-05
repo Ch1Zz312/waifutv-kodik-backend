@@ -19,9 +19,7 @@ const CDNLIB_HEADERS = {
 let parser = null;
 function getParser() {
   if (parser) return parser;
-  parser = new AniParsec({
-    userAgent: 'WaifuTV/1.0 (https://waifutv.app)',
-  });
+  parser = new AniParsec();
   return parser;
 }
 
