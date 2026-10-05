@@ -1,7 +1,7 @@
 import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
 
-// Публичный токен (можно оставить как fallback)
-const FALLBACK_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...'; // ваш токен
+// Полный токен из твоего первого сообщения (AnimeLib-Mobile)
+const FALLBACK_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOTZkYjliMDI4NGM0OWQ1Yzc2NTIxMzkxZTRlNDJkNjAwNTFmMDUzMDU2NjBjZGQzYTRjYmEzN2FjMmRmYTZhNjEyM2VmNDgxZDBjMGU0Y2MiLCJpYXQiOjE3NTc0MzEyNDcuOTg2MjE5LCJuYmYiOjE3NTc0MzEyNDcuOTg2MjIxLCJleHAiOjE3NjAwMjMyNDcuOTgyNTM3LCJzdWIiOiI5NDM5MzIxIiwic2NvcGVzIjpbXX0.FG2bBdeF0328Prrsr9Q_SL-VkQyeJMqE9b9uQ1E74JsCnJPveeMMLYNuJt_cTp5XpkvFK3XHltfCM7wi4Gg-x3rlpG-sTELMaoMNWv-4TmNcQbrKwSnTSVJfUFlnguVA7kpGHBgfAaL3NVKSwu_Pu1xqq6UwqpV9hBSJ6iTHG7T3vz7e_HxhGWQ7AZ47xmoo76aOnWQ2vIceF-zq6gF0peKBsHXuG8Prl-88xyltkT2SSnAJrTl4xmPQsM0F0OntkkFZGU6XPdFwXw-orxvtpCfsv556ra5fdbACMjqfZ3euwqXEHGRtkjMJpmku1-sV_xubQvCgbwuO8WRc-ukuWv3x2WTffkXypFKviEdNTXLBFki5ex4sblvaYhDUd4IrZwIjL-GRPQ9_X6WZITz7Lic5faKs1kr3mxXDSuK7u7tC2WSCom_I_CYR9_aIytJ_XkxixG-aa3LP9-jaOn0n7iZS8XNjaIlLHyqr2Of9wPvJ-A1NVv41EeaptXWs7VcSWg42-fUkofNyS2Qn1Qdo9DzVKmqzO9jMpe-8suwBVGl3gpr4nCwn4J8tIKOTzWX--xHkotH5w1TYaQAtzKs6ocyptylNdAD8WRm_FU3E3pdY5Ecarem7SK8ij5rh724GMiBXN9y9s6jBSwPoIAD9W-R4UoXo1mhsRNGiJ4EkC0U';
 
 const CDNLIB_HEADERS = {
   'Authorization': 'Bearer ' + FALLBACK_TOKEN,
@@ -61,30 +61,42 @@ async function parseKodikLink(kodikUrl) {
 
 /**
  * Ищет аниме в Kodik по shikimori_id и возвращает ссылку на плеер.
- * Это нужно, потому что /video принимает shikimori_id, а не готовую ссылку Kodik.
  */
 async function findKodikLinkByShikimoriId(shikimoriId, episode = 1) {
   const client = await getKodikClient();
 
-  // Ищем по shikimori_id
   const searchResult = await client.search({
     shikimori_id: shikimoriId,
-    // можно добавить limit, types и т.д.
   });
+
+  console.log('Kodik search raw result:', JSON.stringify(searchResult).slice(0, 500));
 
   if (!searchResult?.results?.length) {
     throw new Error('Аниме не найдено в Kodik');
   }
 
   const anime = searchResult.results[0];
-  // Ищем нужный эпизод
-  const episodeData = anime.episodes?.[episode] || anime.episodes?.['1'];
+  console.log('Kodik anime keys:', Object.keys(anime));
+  console.log('Kodik anime episodes type:', typeof anime.episodes, Array.isArray(anime.episodes));
+
+  let episodeData = null;
+  if (Array.isArray(anime.episodes)) {
+    episodeData = anime.episodes[Number(episode) - 1] || anime.episodes[0];
+  } else if (anime.episodes && typeof anime.episodes === 'object') {
+    episodeData = anime.episodes[String(episode)] || anime.episodes['1'];
+  }
+
   if (!episodeData) {
     throw new Error('Эпизод не найден');
   }
 
-  // episodeData.link — это ссылка на плеер Kodik
-  return episodeData.link;
+  // В зависимости от версии kodikwrapper поле может называться link или src
+  const link = episodeData.link || episodeData.src;
+  if (!link) {
+    throw new Error('Не могу найти ссылку на плеер в эпизоде');
+  }
+
+  return link;
 }
 
 export default async function handler(req, res) {
@@ -94,7 +106,12 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { path, kodik_url, shikimori_id, episode, ...query } = req.query;
+  // Vercel кладёт путь в req.url, разбираем его вручную
+  const url = new URL(req.url, `https://${req.headers.host}`);
+  const pathStr = url.pathname.replace(/^\/api\/?/, ''); // убираем /api/
+  const query = Object.fromEntries(url.searchParams.entries());
+
+  const { kodik_url, shikimori_id, episode } = query;
 
   // === 1. Парсинг готовой Kodik-ссылки ===
   if (kodik_url) {
@@ -131,14 +148,13 @@ export default async function handler(req, res) {
   }
 
   // === 3. Прокси к api.cdnlibs.org (для метаданных) ===
-  const pathStr = Array.isArray(path) ? path.join('/') : (path || '');
-  const queryStr = new URLSearchParams(query).toString();
-  const url = `https://api.cdnlibs.org/api/${pathStr}${queryStr ? '?' + queryStr : ''}`;
+  const queryStr = url.searchParams.toString();
+  const cdnUrl = `https://api.cdnlibs.org/api/${pathStr}${queryStr ? '?' + queryStr : ''}`;
 
-  console.log('Proxying to:', url);
+  console.log('Proxying to:', cdnUrl);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(cdnUrl, {
       method: 'GET',
       headers: CDNLIB_HEADERS,
     });
