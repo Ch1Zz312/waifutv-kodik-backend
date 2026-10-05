@@ -1,7 +1,7 @@
 import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
 
-// Публичный токен из open-source проекта AnimeLib-Mobile
-const FALLBACK_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOTZkYjliMDI4NGM0OWQ1Yzc2NTIxMzkxZTRlNDJkNjAwNTFmMDUzMDU2NjBjZGQzYTRjYmEzN2FjMmRmYTZhNjEyM2VmNDgxZDBjMGU0Y2MiLCJpYXQiOjE3NTc0MzEyNDcuOTg2MjE5LCJuYmYiOjE3NTc0MzEyNDcuOTg2MjIxLCJleHAiOjE3NjAwMjMyNDcuOTgyNTM3LCJzdWIiOiI5NDM5MzIxIiwic2NvcGVzIjpbXX0.FG2bBdeF0328Prrsr9Q_SL-VkQyeJMqE9b9uQ1E74JsCnJPveeMMLYNuJt_cTp5XpkvFK3XHltfCM7wi4Gg-x3rlpG-sTELMaoMNWv-4TmNcQbrKwSnTSVJfUFlnguVA7kpGHBgfAaL3NVKSwu_Pu1xqq6UwqpV9hBSJ6iTHG7T3vz7e_HxhGWQ7AZ47xmoo76aOnWQ2vIceF-zq6gF0peKBsHXuG8Prl-88xyltkT2SSnAJrTl4xmPQsM0F0OntkkFZGU6XPdFwXw-orxvtpCfsv556ra5fdbACMjqfZ3euwqXEHGRtkjMJpmku1-sV_xubQvCgbwuO8WRc-ukuWv3x2WTffkXypFKviEdNTXLBFki5ex4sblvaYhDUd4IrZwIjL-GRPQ9_X6WZITz7Lic5faKs1kr3mxXDSuK7u7tC2WSCom_I_CYR9_aIytJ_XkxixG-aa3LP9-jaOn0n7iZS8XNjaIlLHyqr2Of9wPvJ-A1NVv41EeaptXWs7VcSWg42-fUkofNyS2Qn1Qdo9DzVKmqzO9jMpe-8suwBVGl3gpr4nCwn4J8tIKOTzWX--xHkotH5w1TYaQAtzKs6ocyptylNdAD8WRm_FU3E3pdY5Ecarem7SK8ij5rh724GMiBXN9y9s6jBSwPoIAD9W-R4UoXo1mhsRNGiJ4EkC0U';
+// Публичный токен (можно оставить как fallback)
+const FALLBACK_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...'; // ваш токен
 
 const CDNLIB_HEADERS = {
   'Authorization': 'Bearer ' + FALLBACK_TOKEN,
@@ -14,7 +14,6 @@ const CDNLIB_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36',
 };
 
-// Инициализируем клиент Kodik один раз
 let kodikClient = null;
 async function getKodikClient() {
   if (kodikClient) return kodikClient;
@@ -24,12 +23,11 @@ async function getKodikClient() {
 }
 
 /**
- * Парсит ссылку Kodik-плеера и возвращает m3u8-ссылку через kodikwrapper.
+ * Парсит ссылку Kodik-плеера и возвращает m3u8-ссылки по качествам.
  */
 async function parseKodikLink(kodikUrl) {
   const client = await getKodikClient();
 
-  // 1. Парсим ссылку, чтобы получить playerSingleUrl
   const parsedLink = await VideoLinks.parseLink({
     link: kodikUrl,
     extended: true,
@@ -39,18 +37,15 @@ async function parseKodikLink(kodikUrl) {
     throw new Error('Не могу получить ссылку на чанк с плеером');
   }
 
-  // 2. Получаем актуальный endpoint
   const endpoint = await VideoLinks.getActualVideoInfoEndpoint(
     parsedLink.ex.playerSingleUrl
   );
 
-  // 3. Получаем ссылки
   const links = await VideoLinks.getLinks({
     link: kodikUrl,
     videoInfoEndpoint: endpoint,
   });
 
-  // 4. Формируем результат
   const qualities = {};
   for (const [q, linkArray] of Object.entries(links)) {
     if (Array.isArray(linkArray) && linkArray.length > 0) {
@@ -64,6 +59,34 @@ async function parseKodikLink(kodikUrl) {
   };
 }
 
+/**
+ * Ищет аниме в Kodik по shikimori_id и возвращает ссылку на плеер.
+ * Это нужно, потому что /video принимает shikimori_id, а не готовую ссылку Kodik.
+ */
+async function findKodikLinkByShikimoriId(shikimoriId, episode = 1) {
+  const client = await getKodikClient();
+
+  // Ищем по shikimori_id
+  const searchResult = await client.search({
+    shikimori_id: shikimoriId,
+    // можно добавить limit, types и т.д.
+  });
+
+  if (!searchResult?.results?.length) {
+    throw new Error('Аниме не найдено в Kodik');
+  }
+
+  const anime = searchResult.results[0];
+  // Ищем нужный эпизод
+  const episodeData = anime.episodes?.[episode] || anime.episodes?.['1'];
+  if (!episodeData) {
+    throw new Error('Эпизод не найден');
+  }
+
+  // episodeData.link — это ссылка на плеер Kodik
+  return episodeData.link;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -71,9 +94,9 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { path, kodik_url, ...query } = req.query;
+  const { path, kodik_url, shikimori_id, episode, ...query } = req.query;
 
-  // Эндпоинт для парсинга Kodik-ссылки
+  // === 1. Парсинг готовой Kodik-ссылки ===
   if (kodik_url) {
     try {
       console.log('Parsing Kodik URL via kodikwrapper:', kodik_url);
@@ -85,7 +108,29 @@ export default async function handler(req, res) {
     }
   }
 
-  // Прокси к api.cdnlibs.org
+  // === 2. Получение видео по shikimori_id + episode ===
+  if (shikimori_id) {
+    try {
+      console.log(`Searching Kodik for shikimori_id=${shikimori_id}, episode=${episode}`);
+      const kodikPlayerUrl = await findKodikLinkByShikimoriId(
+        shikimori_id,
+        episode || 1
+      );
+      console.log('Found Kodik player URL:', kodikPlayerUrl);
+
+      const result = await parseKodikLink(kodikPlayerUrl);
+      return res.status(200).json({
+        url: result.default,
+        qualities: result.qualities,
+        source: 'kodik',
+      });
+    } catch (e) {
+      console.error('Kodik video error:', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  // === 3. Прокси к api.cdnlibs.org (для метаданных) ===
   const pathStr = Array.isArray(path) ? path.join('/') : (path || '');
   const queryStr = new URLSearchParams(query).toString();
   const url = `https://api.cdnlibs.org/api/${pathStr}${queryStr ? '?' + queryStr : ''}`;
