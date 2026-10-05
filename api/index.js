@@ -1,10 +1,13 @@
-import { Client, VideoLinks, getPublicToken } from 'kodikwrapper';
+import { VideoLinks } from 'kodikwrapper';
 
-// Полный токен из твоего первого сообщения (AnimeLib-Mobile)
-const FALLBACK_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOTZkYjliMDI4NGM0OWQ1Yzc2NTIxMzkxZTRlNDJkNjAwNTFmMDUzMDU2NjBjZGQzYTRjYmEzN2FjMmRmYTZhNjEyM2VmNDgxZDBjMGU0Y2MiLCJpYXQiOjE3NTc0MzEyNDcuOTg2MjE5LCJuYmYiOjE3NTc0MzEyNDcuOTg2MjIxLCJleHAiOjE3NjAwMjMyNDcuOTgyNTM3LCJzdWIiOiI5NDM5MzIxIiwic2NvcGVzIjpbXX0.FG2bBdeF0328Prrsr9Q_SL-VkQyeJMqE9b9uQ1E74JsCnJPveeMMLYNuJt_cTp5XpkvFK3XHltfCM7wi4Gg-x3rlpG-sTELMaoMNWv-4TmNcQbrKwSnTSVJfUFlnguVA7kpGHBgfAaL3NVKSwu_Pu1xqq6UwqpV9hBSJ6iTHG7T3vz7e_HxhGWQ7AZ47xmoo76aOnWQ2vIceF-zq6gF0peKBsHXuG8Prl-88xyltkT2SSnAJrTl4xmPQsM0F0OntkkFZGU6XPdFwXw-orxvtpCfsv556ra5fdbACMjqfZ3euwqXEHGRtkjMJpmku1-sV_xubQvCgbwuO8WRc-ukuWv3x2WTffkXypFKviEdNTXLBFki5ex4sblvaYhDUd4IrZwIjL-GRPQ9_X6WZITz7Lic5faKs1kr3mxXDSuK7u7tC2WSCom_I_CYR9_aIytJ_XkxixG-aa3LP9-jaOn0n7iZS8XNjaIlLHyqr2Of9wPvJ-A1NVv41EeaptXWs7VcSWg42-fUkofNyS2Qn1Qdo9DzVKmqzO9jMpe-8suwBVGl3gpr4nCwn4J8tIKOTzWX--xHkotH5w1TYaQAtzKs6ocyptylNdAD8WRm_FU3E3pdY5Ecarem7SK8ij5rh724GMiBXN9y9s6jBSwPoIAD9W-R4UoXo1mhsRNGiJ4EkC0U';
+// API-ключ Kodik (получен через get_token.py)
+const KODIK_API_KEY = '56a768d08f43091901c44b54fe970049';
+
+// Токен для cdnlibs (для прокси метаданных)
+const CDNLIB_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOTZkYjliMDI4NGM0OWQ1Yzc2NTIxMzkxZTRlNDJkNjAwNTFmMDUzMDU2NjBjZGQzYTRjYmEzN2FjMmRmYTZhNjEyM2VmNDgxZDBjMGU0Y2MiLCJpYXQiOjE3NTc0MzEyNDcuOTg2MjE5LCJuYmYiOjE3NTc0MzEyNDcuOTg2MjIxLCJleHAiOjE3NjAwMjMyNDcuOTgyNTM3LCJzdWIiOiI5NDM5MzIxIiwic2NvcGVzIjpbXX0.FG2bBdeF0328Prrsr9Q_SL-VkQyeJMqE9b9uQ1E74JsCnJPveeMMLYNuJt_cTp5XpkvFK3XHltfCM7wi4Gg-x3rlpG-sTELMaoMNWv-4TmNcQbrKwSnTSVJfUFlnguVA7kpGHBgfAaL3NVKSwu_Pu1xqq6UwqpV9hBSJ6iTHG7T3vz7e_HxhGWQ7AZ47xmoo76aOnWQ2vIceF-zq6gF0peKBsHXuG8Prl-88xyltkT2SSnAJrTl4xmPQsM0F0OntkkFZGU6XPdFwXw-orxvtpCfsv556ra5fdbACMjqfZ3euwqXEHGRtkjMJpmku1-sV_xubQvCgbwuO8WRc-ukuWv3x2WTffkXypFKviEdNTXLBFki5ex4sblvaYhDUd4IrZwIjL-GRPQ9_X6WZITz7Lic5faKs1kr3mxXDSuK7u7tC2WSCom_I_CYR9_aIytJ_XkxixG-aa3LP9-jaOn0n7iZS8XNjaIlLHyqr2Of9wPvJ-A1NVv41EeaptXWs7VcSWg42-fUkofNyS2Qn1Qdo9DzVKmqzO9jMpe-8suwBVGl3gpr4nCwn4J8tIKOTzWX--xHkotH5w1TYaQAtzKs6ocyptylNdAD8WRm_FU3E3pdY5Ecarem7SK8ij5rh724GMiBXN9y9s6jBSwPoIAD9W-R4UoXo1mhsRNGiJ4EkC0U';
 
 const CDNLIB_HEADERS = {
-  'Authorization': 'Bearer ' + FALLBACK_TOKEN,
+  'Authorization': 'Bearer ' + CDNLIB_TOKEN,
   'Accept': '*/*',
   'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
   'Content-Type': 'application/json',
@@ -14,22 +17,58 @@ const CDNLIB_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36',
 };
 
-let kodikClient = null;
-async function getKodikClient() {
-  if (kodikClient) return kodikClient;
-  const token = await getPublicToken();
-  kodikClient = Client.fromToken(token);
-  return kodikClient;
+/**
+ * Ищет аниме в Kodik по shikimori_id через публичный API по ключу.
+ * Возвращает массив результатов с переводами и ссылками на серии.
+ */
+async function searchKodik(shikimoriId) {
+  const url = `https://kodik-api.com/search?token=${KODIK_API_KEY}&shikimori_id=${shikimoriId}&with_episodes=true&limit=50`;
+  console.log('Kodik search URL:', url);
+
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Kodik API вернул ${response.status}`);
+  }
+
+  const data = await response.json();
+  console.log('Kodik search total:', data.total);
+  return data.results || [];
 }
 
 /**
- * Парсит ссылку Kodik-плеера и возвращает m3u8-ссылки по качествам.
+ * Достаёт ссылку на плеер для нужной серии из результата поиска.
+ * Приоритет: 720p, затем любое доступное качество.
+ */
+function extractEpisodeLink(anime, episode) {
+  const episodes = anime.seasons?.['1']?.episodes;
+  if (!episodes) {
+    throw new Error('У аниме нет списка серий');
+  }
+
+  const epNum = String(episode || 1);
+  const link = episodes[epNum];
+  if (!link) {
+    throw new Error(`Серия ${epNum} не найдена (доступно: ${Object.keys(episodes).length})`);
+  }
+
+  return link;
+}
+
+/**
+ * Парсит ссылку Kodik-плеера в прямую m3u8 через VideoLinks.
  */
 async function parseKodikLink(kodikUrl) {
-  const client = await getKodikClient();
+  // Kodik возвращает ссылку с // в начале — добавляем https:
+  const fullUrl = kodikUrl.startsWith('//') ? `https:${kodikUrl}` : kodikUrl;
 
   const parsedLink = await VideoLinks.parseLink({
-    link: kodikUrl,
+    link: fullUrl,
     extended: true,
   });
 
@@ -42,7 +81,7 @@ async function parseKodikLink(kodikUrl) {
   );
 
   const links = await VideoLinks.getLinks({
-    link: kodikUrl,
+    link: fullUrl,
     videoInfoEndpoint: endpoint,
   });
 
@@ -59,46 +98,6 @@ async function parseKodikLink(kodikUrl) {
   };
 }
 
-/**
- * Ищет аниме в Kodik по shikimori_id и возвращает ссылку на плеер.
- */
-async function findKodikLinkByShikimoriId(shikimoriId, episode = 1) {
-  const client = await getKodikClient();
-
-  const searchResult = await client.search({
-    shikimori_id: shikimoriId,
-  });
-
-  console.log('Kodik search raw result:', JSON.stringify(searchResult).slice(0, 500));
-
-  if (!searchResult?.results?.length) {
-    throw new Error('Аниме не найдено в Kodik');
-  }
-
-  const anime = searchResult.results[0];
-  console.log('Kodik anime keys:', Object.keys(anime));
-  console.log('Kodik anime episodes type:', typeof anime.episodes, Array.isArray(anime.episodes));
-
-  let episodeData = null;
-  if (Array.isArray(anime.episodes)) {
-    episodeData = anime.episodes[Number(episode) - 1] || anime.episodes[0];
-  } else if (anime.episodes && typeof anime.episodes === 'object') {
-    episodeData = anime.episodes[String(episode)] || anime.episodes['1'];
-  }
-
-  if (!episodeData) {
-    throw new Error('Эпизод не найден');
-  }
-
-  // В зависимости от версии kodikwrapper поле может называться link или src
-  const link = episodeData.link || episodeData.src;
-  if (!link) {
-    throw new Error('Не могу найти ссылку на плеер в эпизоде');
-  }
-
-  return link;
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -106,9 +105,8 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Vercel кладёт путь в req.url, разбираем его вручную
   const url = new URL(req.url, `https://${req.headers.host}`);
-  const pathStr = url.pathname.replace(/^\/api\/?/, ''); // убираем /api/
+  const pathStr = url.pathname.replace(/^\/api\/?/, '');
   const query = Object.fromEntries(url.searchParams.entries());
 
   const { kodik_url, shikimori_id, episode } = query;
@@ -116,7 +114,7 @@ export default async function handler(req, res) {
   // === 1. Парсинг готовой Kodik-ссылки ===
   if (kodik_url) {
     try {
-      console.log('Parsing Kodik URL via kodikwrapper:', kodik_url);
+      console.log('Parsing Kodik URL:', kodik_url);
       const result = await parseKodikLink(kodik_url);
       return res.status(200).json(result);
     } catch (e) {
@@ -125,21 +123,29 @@ export default async function handler(req, res) {
     }
   }
 
-  // === 2. Получение видео по shikimori_id + episode ===
+  // === 2. Видео по shikimori_id + episode ===
   if (shikimori_id) {
     try {
       console.log(`Searching Kodik for shikimori_id=${shikimori_id}, episode=${episode}`);
-      const kodikPlayerUrl = await findKodikLinkByShikimoriId(
-        shikimori_id,
-        episode || 1
-      );
-      console.log('Found Kodik player URL:', kodikPlayerUrl);
+      const results = await searchKodik(shikimori_id);
 
-      const result = await parseKodikLink(kodikPlayerUrl);
+      if (!results.length) {
+        return res.status(404).json({ error: 'Аниме не найдено в Kodik' });
+      }
+
+      // Берём первый результат (обычно 2x2 или AniDUB — самые полные)
+      const anime = results[0];
+      console.log('Chosen anime:', anime.title, '| translation:', anime.translation?.title, '| episodes:', anime.episodes_count);
+
+      const episodeLink = extractEpisodeLink(anime, episode || 1);
+      console.log('Episode link:', episodeLink);
+
+      const parsed = await parseKodikLink(episodeLink);
       return res.status(200).json({
-        url: result.default,
-        qualities: result.qualities,
+        url: parsed.default,
+        qualities: parsed.qualities,
         source: 'kodik',
+        translation: anime.translation?.title,
       });
     } catch (e) {
       console.error('Kodik video error:', e.message);
@@ -147,7 +153,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // === 3. Прокси к api.cdnlibs.org (для метаданных) ===
+  // === 3. Прокси к api.cdnlibs.org ===
   const queryStr = url.searchParams.toString();
   const cdnUrl = `https://api.cdnlibs.org/api/${pathStr}${queryStr ? '?' + queryStr : ''}`;
 
