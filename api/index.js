@@ -8,75 +8,66 @@ export const config = {
 
 const ANILIBRIA_API = 'https://api.anilibria.app/api/v1';
 
-// === Кэш релизов в памяти функции (живёт между вызовами на тёплом инстансе) ===
+// === Кэш релизов по shikimori_id (живёт между вызовами на тёплом инстансе) ===
 const releaseCache = new Map();
 const CACHE_TTL = 1000 * 60 * 30; // 30 минут
 
 /**
- * Поиск релиза на AniLibria по названию.
- * Считает релевантность по совпадению слов в русском и английском названиях
- * и берёт самый подходящий релиз (а не первый попавшийся).
+ * Поиск релиза на AniLibria по shikimori_id.
+ * API AniLibria не поддерживает параметр ?shikimori_id=..., поэтому
+ * перебираем страницы каталога и ищем релиз с нужным shikimori.id.
  * С кэшем: повторные запросы того же тайтла возвращаются мгновенно.
  */
-async function findReleaseByTitle(title) {
-  const key = title.toLowerCase().trim();
+async function findReleaseByShikimoriId(shikimoriId) {
+  const key = String(shikimoriId);
+
   const cached = releaseCache.get(key);
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
-    console.log('Cache hit for title:', title);
+    console.log(`Cache hit for shikimori_id=${shikimoriId}`);
     return cached.release;
   }
 
-  const url = `${ANILIBRIA_API}/anime/catalog/releases?search=${encodeURIComponent(title)}`;
-  console.log('Searching AniLibria by title:', url);
+  const perPage = 50;
+  const maxPages = 40; // ~2000 релизов — покроет почти весь каталог
 
-  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-  if (!res.ok) {
-    throw new Error(`AniLibria search returned ${res.status}`);
-  }
+  for (let page = 1; page <= maxPages; page++) {
+    const url = `${ANILIBRIA_API}/anime/catalog/releases?limit=${perPage}&page=${page}`;
+    console.log(`Searching page ${page} for shikimori_id=${shikimoriId}...`);
 
-  const json = await res.json();
-  const list = json?.data;
-
-  if (!Array.isArray(list) || list.length === 0) {
-    return null;
-  }
-
-  // Нормализация: нижний регистр, убрать пунктуацию, сжать пробелы
-  const normalize = (s) =>
-    String(s || '')
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-  const queryWords = normalize(title).split(' ').filter((w) => w.length > 2);
-  console.log(`Query words: ${queryWords.join(', ')}`);
-
-  let best = null;
-  let bestScore = 0;
-
-  for (const item of list) {
-    const main = normalize(item?.name?.main);
-    const english = normalize(item?.name?.english);
-    const combined = `${main} ${english}`;
-
-    let score = 0;
-    for (const word of queryWords) {
-      if (combined.includes(word)) score++;
+    let res;
+    try {
+      res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    } catch (e) {
+      console.log(`Page ${page} fetch failed:`, e.message);
+      continue;
     }
 
-    console.log(`  [${score}/${queryWords.length}] ${item.name?.main} (id=${item.id})`);
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = item;
+    if (!res.ok) {
+      console.log(`Page ${page} returned ${res.status}`);
+      break;
     }
-  }
 
-  if (best && bestScore > 0) {
-    console.log(`Best match: ${best.name?.main} (score ${bestScore}/${queryWords.length})`);
-    releaseCache.set(key, { release: best, ts: Date.now() });
-    return best;
+    const json = await res.json();
+    const list = json?.data;
+    if (!Array.isArray(list) || list.length === 0) {
+      break;
+    }
+
+    const found = list.find(
+      (item) => String(item?.shikimori?.id) === key
+    );
+
+    if (found) {
+      console.log(`Found on page ${page}: ${found.name?.main} (id=${found.id})`);
+      releaseCache.set(key, { release: found, ts: Date.now() });
+      return found;
+    }
+
+    // Проверяем, не закончились ли страницы
+    const pagination = json?.meta?.pagination;
+    if (pagination && page >= pagination.total_pages) {
+      break;
+    }
   }
 
   return null;
@@ -165,18 +156,20 @@ export default async function handler(req, res) {
   const url = new URL(req.url, `https://${req.headers.host}`);
   const query = Object.fromEntries(url.searchParams.entries());
 
-  const { title, episode, release_id } = query;
+  const { shikimori_id, episode, release_id } = query;
 
-  // === 1. Получение видео по названию + episode ===
-  if (title) {
+  // === 1. Получение видео по shikimori_id + episode ===
+  if (shikimori_id) {
     try {
-      console.log(`Searching AniLibria by title="${title}", episode=${episode || 1}`);
+      console.log(
+        `Searching AniLibria by shikimori_id=${shikimori_id}, episode=${episode || 1}`
+      );
 
-      const release = await findReleaseByTitle(title);
+      const release = await findReleaseByShikimoriId(shikimori_id);
 
       if (!release) {
         return res.status(404).json({
-          error: `Аниме "${title}" не найдено на AniLibria`,
+          error: `Аниме с shikimori_id=${shikimori_id} не найдено на AniLibria`,
         });
       }
 
@@ -241,7 +234,7 @@ export default async function handler(req, res) {
     status: 'ok',
     service: 'WaifuTV backend (AniLibria)',
     endpoints: {
-      video: '/api?title=Блич&episode=1',
+      video: '/api?shikimori_id=269&episode=1',
       videoByRelease: '/api?release_id=8452&episode=1',
     },
   });
