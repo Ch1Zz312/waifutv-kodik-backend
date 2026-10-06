@@ -24,9 +24,34 @@ async function getParser() {
 async function fetchVideo(shikimoriId, episode = 1) {
   const p = await getParser();
 
-  console.log(`Fetching video: shikimori_id=${shikimoriId}, episode=${episode}`);
+  console.log(`Searching Kodik for shikimori_id=${shikimoriId}, episode=${episode}`);
 
-  const [link, quality] = await p.getLink(String(shikimoriId), 'shikimori', Number(episode));
+  // 1. Ищем аниме по shikimori_id, чтобы получить внутренний ID Kodik
+  const results = await p.searchById(String(shikimoriId), 'shikimori');
+
+  if (!results || results.length === 0) {
+    throw new Error('Аниме не найдено в Kodik');
+  }
+
+  const anime = results[0];
+  // Внутренний ID Kodik (например, "serial-6646")
+  const kodikId = anime.id || anime.kodikId;
+  const translationId = anime.translation?.id || anime.translationId;
+
+  console.log(`Found Kodik ID: ${kodikId}, translation: ${translationId}`);
+
+  if (!kodikId) {
+    throw new Error('Не удалось получить внутренний ID Kodik');
+  }
+
+  // 2. Получаем ссылку на видео для нужной серии
+  // getLink(id, idType, episode, translationId?)
+  const [link, quality] = await p.getLink(
+    String(kodikId),
+    'kodik',
+    Number(episode),
+    translationId ? String(translationId) : undefined
+  );
 
   if (!link) {
     throw new Error('Не удалось получить ссылку на видео');
