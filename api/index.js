@@ -14,6 +14,8 @@ const CACHE_TTL = 1000 * 60 * 30; // 30 минут
 
 /**
  * Поиск релиза на AniLibria по названию.
+ * Считает релевантность по совпадению слов в русском и английском названиях
+ * и берёт самый подходящий релиз (а не первый попавшийся).
  * С кэшем: повторные запросы того же тайтла возвращаются мгновенно.
  */
 async function findReleaseByTitle(title) {
@@ -35,10 +37,46 @@ async function findReleaseByTitle(title) {
   const json = await res.json();
   const list = json?.data;
 
-  if (Array.isArray(list) && list.length > 0) {
-    console.log(`Found ${list.length} releases, taking first:`, list[0]?.name?.main);
-    releaseCache.set(key, { release: list[0], ts: Date.now() });
-    return list[0];
+  if (!Array.isArray(list) || list.length === 0) {
+    return null;
+  }
+
+  // Нормализация: нижний регистр, убрать пунктуацию, сжать пробелы
+  const normalize = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const queryWords = normalize(title).split(' ').filter((w) => w.length > 2);
+  console.log(`Query words: ${queryWords.join(', ')}`);
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const item of list) {
+    const main = normalize(item?.name?.main);
+    const english = normalize(item?.name?.english);
+    const combined = `${main} ${english}`;
+
+    let score = 0;
+    for (const word of queryWords) {
+      if (combined.includes(word)) score++;
+    }
+
+    console.log(`  [${score}/${queryWords.length}] ${item.name?.main} (id=${item.id})`);
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+
+  if (best && bestScore > 0) {
+    console.log(`Best match: ${best.name?.main} (score ${bestScore}/${queryWords.length})`);
+    releaseCache.set(key, { release: best, ts: Date.now() });
+    return best;
   }
 
   return null;
