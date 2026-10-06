@@ -8,11 +8,22 @@ export const config = {
 
 const ANILIBRIA_API = 'https://anilibria.top/api/v1';
 
+// === Кэш релизов в памяти функции (живёт между вызовами на тёплом инстансе) ===
+const releaseCache = new Map();
+const CACHE_TTL = 1000 * 60 * 30; // 30 минут
+
 /**
  * Поиск релиза на AniLibria по названию.
- * Возвращает первый подходящий релиз или null.
+ * С кэшем: повторные запросы того же тайтла возвращаются мгновенно.
  */
 async function findReleaseByTitle(title) {
+  const key = title.toLowerCase().trim();
+  const cached = releaseCache.get(key);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    console.log('Cache hit for title:', title);
+    return cached.release;
+  }
+
   const url = `${ANILIBRIA_API}/anime/catalog/releases?search=${encodeURIComponent(title)}`;
   console.log('Searching AniLibria by title:', url);
 
@@ -26,6 +37,7 @@ async function findReleaseByTitle(title) {
 
   if (Array.isArray(list) && list.length > 0) {
     console.log(`Found ${list.length} releases, taking first:`, list[0]?.name?.main);
+    releaseCache.set(key, { release: list[0], ts: Date.now() });
     return list[0];
   }
 
