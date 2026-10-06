@@ -1,12 +1,12 @@
 // Vercel Serverless Function для WaifuTV
-// Источник видео: AniLibria (anilibria.top)
+// Источник видео: AniLibria (зеркало api.anilibria.app)
 // Работает без токена и без прокси
 
 export const config = {
   runtime: 'nodejs',
 };
 
-const ANILIBRIA_API = 'https://anilibria.top/api/v1';
+const ANILIBRIA_API = 'https://api.anilibria.app/api/v1';
 
 // === Кэш релизов в памяти функции (живёт между вызовами на тёплом инстансе) ===
 const releaseCache = new Map();
