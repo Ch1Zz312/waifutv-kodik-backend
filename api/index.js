@@ -9,79 +9,24 @@ export const config = {
 const ANILIBRIA_API = 'https://anilibria.top/api/v1';
 
 /**
- * Поиск релиза на AniLibria по shikimori_id.
- * anilibria.top не поддерживает прямой поиск по shikimori_id,
- * поэтому ищем по названию и фильтруем по shikimori.id.
+ * Поиск релиза на AniLibria по названию.
+ * Возвращает первый подходящий релиз или null.
  */
-async function findReleaseByShikimoriId(shikimoriId) {
-  // Шаг 1: получаем список релизов. Пробуем сначала через каталог
-  // с поиском по ID Shikimori (если поддерживается).
-  const directUrl = `${ANILIBRIA_API}/anime/catalog/releases?shikimori_id=${shikimoriId}`;
-  console.log('Trying direct search:', directUrl);
+async function findReleaseByTitle(title) {
+  const url = `${ANILIBRIA_API}/anime/catalog/releases?search=${encodeURIComponent(title)}`;
+  console.log('Searching AniLibria by title:', url);
 
-  try {
-    const directRes = await fetch(directUrl, {
-      headers: { 'Accept': 'application/json' },
-    });
-
-    if (directRes.ok) {
-      const directJson = await directRes.json();
-      const list = directJson?.data;
-      if (Array.isArray(list) && list.length > 0) {
-        // Проверяем, что нашли именно нужный shikimori_id
-        const exact = list.find(
-          (item) => String(item?.shikimori?.id) === String(shikimoriId)
-        );
-        if (exact) {
-          console.log('Found via direct search:', exact.name?.main);
-          return exact;
-        }
-      }
-    }
-  } catch (e) {
-    console.log('Direct search failed:', e.message);
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) {
+    throw new Error(`AniLibria search returned ${res.status}`);
   }
 
-  // Шаг 2: если прямой поиск не сработал — ищем постранично.
-  // Качаем несколько страниц и ищем совпадение по shikimori.id.
-  console.log('Falling back to paged search...');
-  const perPage = 50;
-  const maxPages = 40; // ~2000 релизов — покроет большинство
+  const json = await res.json();
+  const list = json?.data;
 
-  for (let page = 1; page <= maxPages; page++) {
-    const url = `${ANILIBRIA_API}/anime/catalog/releases?limit=${perPage}&page=${page}`;
-    let res;
-    try {
-      res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    } catch (e) {
-      console.log(`Page ${page} fetch failed:`, e.message);
-      continue;
-    }
-
-    if (!res.ok) {
-      console.log(`Page ${page} returned ${res.status}`);
-      break;
-    }
-
-    const json = await res.json();
-    const list = json?.data;
-    if (!Array.isArray(list) || list.length === 0) {
-      break;
-    }
-
-    const found = list.find(
-      (item) => String(item?.shikimori?.id) === String(shikimoriId)
-    );
-    if (found) {
-      console.log(`Found on page ${page}:`, found.name?.main);
-      return found;
-    }
-
-    // Если страниц больше нет — выходим
-    const pagination = json?.meta?.pagination;
-    if (pagination && page >= pagination.total_pages) {
-      break;
-    }
+  if (Array.isArray(list) && list.length > 0) {
+    console.log(`Found ${list.length} releases, taking first:`, list[0]?.name?.main);
+    return list[0];
   }
 
   return null;
@@ -119,7 +64,9 @@ function extractEpisodeUrl(release, episodeNumber) {
   );
 
   if (!ep) {
-    throw new Error(`Серия ${episodeNumber} не найдена (доступно: ${episodes.length})`);
+    throw new Error(
+      `Серия ${episodeNumber} не найдена (доступно: ${episodes.length})`
+    );
   }
 
   const url1080 = ep.hls_1080;
@@ -168,18 +115,18 @@ export default async function handler(req, res) {
   const url = new URL(req.url, `https://${req.headers.host}`);
   const query = Object.fromEntries(url.searchParams.entries());
 
-  const { shikimori_id, episode, release_id } = query;
+  const { title, episode, release_id } = query;
 
-  // === 1. Получение видео по shikimori_id + episode ===
-  if (shikimori_id) {
+  // === 1. Получение видео по названию + episode ===
+  if (title) {
     try {
-      console.log(`Searching AniLibria for shikimori_id=${shikimori_id}, episode=${episode || 1}`);
+      console.log(`Searching AniLibria by title="${title}", episode=${episode || 1}`);
 
-      const release = await findReleaseByShikimoriId(shikimori_id);
+      const release = await findReleaseByTitle(title);
 
       if (!release) {
         return res.status(404).json({
-          error: `Аниме с shikimori_id=${shikimori_id} не найдено на AniLibria`,
+          error: `Аниме "${title}" не найдено на AniLibria`,
         });
       }
 
@@ -198,7 +145,8 @@ export default async function handler(req, res) {
         qualities: video.qualities,
         source: 'anilibria',
         animeTitle: details.name?.main || release.name?.main || null,
-        animeTitleEnglish: details.name?.english || release.name?.english || null,
+        animeTitleEnglish:
+          details.name?.english || release.name?.english || null,
         episodeNumber: Number(episode || 1),
         episodeName: video.episodeName,
         duration: video.duration,
@@ -243,7 +191,7 @@ export default async function handler(req, res) {
     status: 'ok',
     service: 'WaifuTV backend (AniLibria)',
     endpoints: {
-      video: '/api?shikimori_id=20&episode=1',
+      video: '/api?title=Блич&episode=1',
       videoByRelease: '/api?release_id=8452&episode=1',
     },
   });
