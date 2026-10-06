@@ -1,87 +1,160 @@
-import { createParser, KodikParser } from '@aerosstube/anime-parser-kodik-ts';
+// Vercel Serverless Function для WaifuTV
+// Источник видео: AniLibria (anilibria.top)
+// Работает без токена и без прокси
 
-// Токен для cdnlibs (для прокси метаданных)
-const CDNLIB_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOTZkYjliMDI4NGM0OWQ1Yzc2NTIxMzkxZTRlNDJkNjAwNTFmMDUzMDU2NjBjZGQzYTRjYmEzN2FjMmRmYTZhNjEyM2VmNDgxZDBjMGU0Y2MiLCJpYXQiOjE3NTc0MzEyNDcuOTg2MjE5LCJuYmYiOjE3NTc0MzEyNDcuOTg2MjIxLCJleHAiOjE3NjAwMjMyNDcuOTgyNTM3LCJzdWIiOiI5NDM5MzIxIiwic2NvcGVzIjpbXX0.FG2bBdeF0328Prrsr9Q_SL-VkQyeJMqE9b9uQ1E74JsCnJPveeMMLYNuJt_cTp5XpkvFK3XHltfCM7wi4Gg-x3rlpG-sTELMaoMNWv-4TmNcQbrKwSnTSVJfUFlnguVA7kpGHBgfAaL3NVKSwu_Pu1xqq6UwqpV9hBSJ6iTHG7T3vz7e_HxhGWQ7AZ47xmoo76aOnWQ2vIceF-zq6gF0peKBsHXuG8Prl-88xyltkT2SSnAJrTl4xmPQsM0F0OntkkFZGU6XPdFwXw-orxvtpCfsv556ra5fdbACMjqfZ3euwqXEHGRtkjMJpmku1-sV_xubQvCgbwuO8WRc-ukuWv3x2WTffkXypFKviEdNTXLBFki5ex4sblvaYhDUd4IrZwIjL-GRPQ9_X6WZITz7Lic5faKs1kr3mxXDSuK7u7tC2WSCom_I_CYR9_aIytJ_XkxixG-aa3LP9-jaOn0n7iZS8XNjaIlLHyqr2Of9wPvJ-A1NVv41EeaptXWs7VcSWg42-fUkofNyS2Qn1Qdo9DzVKmqzO9jMpe-8suwBVGl3gpr4nCwn4J8tIKOTzWX--xHkotH5w1TYaQAtzKs6ocyptylNdAD8WRm_FU3E3pdY5Ecarem7SK8ij5rh724GMiBXN9y9s6jBSwPoIAD9W-R4UoXo1mhsRNGiJ4EkC0U';
-
-const CDNLIB_HEADERS = {
-  'Authorization': 'Bearer ' + CDNLIB_TOKEN,
-  'Accept': '*/*',
-  'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-  'Content-Type': 'application/json',
-  'Origin': 'https://animelib.org',
-  'Referer': 'https://animelib.org/',
-  'Site-Id': '5',
-  'User-Agent': 'Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36',
+export const config = {
+  runtime: 'nodejs',
 };
 
-let parser = null;
+const ANILIBRIA_API = 'https://anilibria.top/api/v1';
 
-// Попробуем создать парсер двумя способами
-async function getParser() {
-  if (parser) return parser;
+/**
+ * Поиск релиза на AniLibria по shikimori_id.
+ * anilibria.top не поддерживает прямой поиск по shikimori_id,
+ * поэтому ищем по названию и фильтруем по shikimori.id.
+ */
+async function findReleaseByShikimoriId(shikimoriId) {
+  // Шаг 1: получаем список релизов. Пробуем сначала через каталог
+  // с поиском по ID Shikimori (если поддерживается).
+  const directUrl = `${ANILIBRIA_API}/anime/catalog/releases?shikimori_id=${shikimoriId}`;
+  console.log('Trying direct search:', directUrl);
 
-  // Способ 1: автоматическое получение токена
   try {
-    parser = await createParser();
-    console.log('Parser created via createParser() (auto token)');
-    return parser;
+    const directRes = await fetch(directUrl, {
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (directRes.ok) {
+      const directJson = await directRes.json();
+      const list = directJson?.data;
+      if (Array.isArray(list) && list.length > 0) {
+        // Проверяем, что нашли именно нужный shikimori_id
+        const exact = list.find(
+          (item) => String(item?.shikimori?.id) === String(shikimoriId)
+        );
+        if (exact) {
+          console.log('Found via direct search:', exact.name?.main);
+          return exact;
+        }
+      }
+    }
   } catch (e) {
-    console.log('createParser() failed:', e.message);
+    console.log('Direct search failed:', e.message);
   }
 
-  // Способ 2: явная передача токена
-  try {
-    parser = new KodikParser(CDNLIB_TOKEN);
-    console.log('Parser created via new KodikParser(token)');
-    return parser;
-  } catch (e) {
-    console.log('new KodikParser(token) failed:', e.message);
+  // Шаг 2: если прямой поиск не сработал — ищем постранично.
+  // Качаем несколько страниц и ищем совпадение по shikimori.id.
+  console.log('Falling back to paged search...');
+  const perPage = 50;
+  const maxPages = 40; // ~2000 релизов — покроет большинство
+
+  for (let page = 1; page <= maxPages; page++) {
+    const url = `${ANILIBRIA_API}/anime/catalog/releases?limit=${perPage}&page=${page}`;
+    let res;
+    try {
+      res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    } catch (e) {
+      console.log(`Page ${page} fetch failed:`, e.message);
+      continue;
+    }
+
+    if (!res.ok) {
+      console.log(`Page ${page} returned ${res.status}`);
+      break;
+    }
+
+    const json = await res.json();
+    const list = json?.data;
+    if (!Array.isArray(list) || list.length === 0) {
+      break;
+    }
+
+    const found = list.find(
+      (item) => String(item?.shikimori?.id) === String(shikimoriId)
+    );
+    if (found) {
+      console.log(`Found on page ${page}:`, found.name?.main);
+      return found;
+    }
+
+    // Если страниц больше нет — выходим
+    const pagination = json?.meta?.pagination;
+    if (pagination && page >= pagination.total_pages) {
+      break;
+    }
   }
 
-  throw new Error('Не удалось создать парсер Kodik ни одним способом');
+  return null;
 }
 
-async function fetchVideo(shikimoriId, episode = 1) {
-  const p = await getParser();
+/**
+ * Получает полные данные релиза по его ID на AniLibria.
+ * Возвращает объект с массивом episodes и HLS-ссылками.
+ */
+async function getReleaseDetails(releaseId) {
+  const url = `${ANILIBRIA_API}/anime/releases/${releaseId}`;
+  console.log('Getting release details:', url);
 
-  console.log(`Searching Kodik for shikimori_id=${shikimoriId}, episode=${episode}`);
-
-  // 1. Ищем аниме по shikimori_id
-  const results = await p.searchById(String(shikimoriId), 'shikimori');
-
-  if (!results || results.length === 0) {
-    throw new Error('Аниме не найдено в Kodik');
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) {
+    throw new Error(`AniLibria release details returned ${res.status}`);
   }
 
-  const anime = results[0];
-  const kodikId = anime.id || anime.kodikId;
-  const translationId = anime.translation?.id || anime.translationId;
+  return await res.json();
+}
 
-  console.log(`Found Kodik ID: ${kodikId}, translation: ${translationId}`);
-
-  if (!kodikId) {
-    throw new Error('Не удалось получить внутренний ID Kodik');
+/**
+ * Ищет нужный эпизод в списке и возвращает HLS-ссылку.
+ * Приоритет: 1080p -> 720p -> 480p.
+ */
+function extractEpisodeUrl(release, episodeNumber) {
+  const episodes = release?.episodes;
+  if (!Array.isArray(episodes) || episodes.length === 0) {
+    throw new Error('У релиза нет списка серий');
   }
 
-  // 2. Получаем ссылку на видео
-  const [link, quality] = await p.getLink(
-    String(kodikId),
-    'kodik',
-    Number(episode),
-    translationId ? String(translationId) : undefined
+  // Ищем эпизод по ordinal
+  const ep = episodes.find(
+    (e) => Number(e?.ordinal) === Number(episodeNumber)
   );
 
-  if (!link) {
-    throw new Error('Не удалось получить ссылку на видео');
+  if (!ep) {
+    throw new Error(`Серия ${episodeNumber} не найдена (доступно: ${episodes.length})`);
   }
 
-  console.log(`Video quality: ${quality}`);
-  console.log(`URL: ${link}`);
+  const url1080 = ep.hls_1080;
+  const url720 = ep.hls_720;
+  const url480 = ep.hls_480;
+
+  let url = null;
+  let quality = null;
+
+  if (url1080) {
+    url = url1080;
+    quality = 1080;
+  } else if (url720) {
+    url = url720;
+    quality = 720;
+  } else if (url480) {
+    url = url480;
+    quality = 480;
+  }
+
+  if (!url) {
+    throw new Error('У серии нет доступных HLS-ссылок');
+  }
 
   return {
-    url: link,
-    quality: quality,
-    source: 'kodik',
+    url,
+    quality,
+    qualities: {
+      ...(url480 ? { '480': url480 } : {}),
+      ...(url720 ? { '720': url720 } : {}),
+      ...(url1080 ? { '1080': url1080 } : {}),
+    },
+    episodeName: ep.name || null,
+    duration: ep.duration || null,
+    preview: ep?.preview?.optimized?.src || ep?.preview?.src || null,
   };
 }
 
@@ -93,46 +166,85 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const url = new URL(req.url, `https://${req.headers.host}`);
-  const pathStr = url.pathname.replace(/^\/api\/?/, '');
   const query = Object.fromEntries(url.searchParams.entries());
 
-  const { shikimori_id, episode } = query;
+  const { shikimori_id, episode, release_id } = query;
 
+  // === 1. Получение видео по shikimori_id + episode ===
   if (shikimori_id) {
     try {
-      const result = await fetchVideo(shikimori_id, episode || 1);
+      console.log(`Searching AniLibria for shikimori_id=${shikimori_id}, episode=${episode || 1}`);
+
+      const release = await findReleaseByShikimoriId(shikimori_id);
+
+      if (!release) {
+        return res.status(404).json({
+          error: `Аниме с shikimori_id=${shikimori_id} не найдено на AniLibria`,
+        });
+      }
+
+      console.log(`Release found: ${release.name?.main} (id=${release.id})`);
+
+      // Получаем полные данные релиза — там массив episodes с HLS-ссылками
+      const details = await getReleaseDetails(release.id);
+
+      const video = extractEpisodeUrl(details, episode || 1);
+
+      console.log(`Video URL: ${video.url} (${video.quality}p)`);
+
       return res.status(200).json({
-        url: result.url,
-        quality: result.quality,
-        source: result.source,
+        url: video.url,
+        quality: video.quality,
+        qualities: video.qualities,
+        source: 'anilibria',
+        animeTitle: details.name?.main || release.name?.main || null,
+        animeTitleEnglish: details.name?.english || release.name?.english || null,
+        episodeNumber: Number(episode || 1),
+        episodeName: video.episodeName,
+        duration: video.duration,
+        preview: video.preview,
+        releaseId: release.id,
+        releaseAlias: details.alias || release.alias || null,
       });
     } catch (e) {
-      console.error('Video fetch error:', e.message);
+      console.error('AniLibria video error:', e.message);
       return res.status(500).json({ error: e.message });
     }
   }
 
-  const queryStr = url.searchParams.toString();
-  const cdnUrl = `https://api.cdnlibs.org/api/${pathStr}${queryStr ? '?' + queryStr : ''}`;
-
-  console.log('Proxying to:', cdnUrl);
-
-  try {
-    const response = await fetch(cdnUrl, {
-      method: 'GET',
-      headers: CDNLIB_HEADERS,
-    });
-
-    const text = await response.text();
-
+  // === 2. Получение видео по release_id + episode (прямой путь) ===
+  if (release_id) {
     try {
-      const json = JSON.parse(text);
-      res.status(response.status).json(json);
+      const details = await getReleaseDetails(release_id);
+      const video = extractEpisodeUrl(details, episode || 1);
+
+      return res.status(200).json({
+        url: video.url,
+        quality: video.quality,
+        qualities: video.qualities,
+        source: 'anilibria',
+        animeTitle: details.name?.main || null,
+        animeTitleEnglish: details.name?.english || null,
+        episodeNumber: Number(episode || 1),
+        episodeName: video.episodeName,
+        duration: video.duration,
+        preview: video.preview,
+        releaseId: details.id,
+        releaseAlias: details.alias || null,
+      });
     } catch (e) {
-      res.status(response.status).send(text);
+      console.error('AniLibria release error:', e.message);
+      return res.status(500).json({ error: e.message });
     }
-  } catch (e) {
-    console.error('Proxy error:', e.message);
-    res.status(500).json({ error: e.message });
   }
+
+  // === 3. Health check / help ===
+  return res.status(200).json({
+    status: 'ok',
+    service: 'WaifuTV backend (AniLibria)',
+    endpoints: {
+      video: '/api?shikimori_id=20&episode=1',
+      videoByRelease: '/api?release_id=8452&episode=1',
+    },
+  });
 }

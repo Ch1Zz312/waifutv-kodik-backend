@@ -2,9 +2,6 @@
   "name": "waifutv-kodik-backend",
   "version": "1.0.0",
   "type": "module",
-  "dependencies": {
-    "@aerosstube/anime-parser-kodik-ts": "^1.1.2"
-  },
   "engines": {
     "node": ">=20.0.0"
   }
