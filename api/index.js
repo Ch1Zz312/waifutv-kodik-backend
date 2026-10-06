@@ -1,4 +1,4 @@
-import { AniParsec } from 'aniparsec-ru';
+import { createParser } from '@aerosstube/anime-parser-kodik-ts';
 
 // Токен для cdnlibs (для прокси метаданных)
 const CDNLIB_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOTZkYjliMDI4NGM0OWQ1Yzc2NTIxMzkxZTRlNDJkNjAwNTFmMDUzMDU2NjBjZGQzYTRjYmEzN2FjMmRmYTZhNjEyM2VmNDgxZDBjMGU0Y2MiLCJpYXQiOjE3NTc0MzEyNDcuOTg2MjE5LCJuYmYiOjE3NTc0MzEyNDcuOTg2MjIxLCJleHAiOjE3NjAwMjMyNDcuOTgyNTM3LCJzdWIiOiI5NDM5MzIxIiwic2NvcGVzIjpbXX0.FG2bBdeF0328Prrsr9Q_SL-VkQyeJMqE9b9uQ1E74JsCnJPveeMMLYNuJt_cTp5XpkvFK3XHltfCM7wi4Gg-x3rlpG-sTELMaoMNWv-4TmNcQbrKwSnTSVJfUFlnguVA7kpGHBgfAaL3NVKSwu_Pu1xqq6UwqpV9hBSJ6iTHG7T3vz7e_HxhGWQ7AZ47xmoo76aOnWQ2vIceF-zq6gF0peKBsHXuG8Prl-88xyltkT2SSnAJrTl4xmPQsM0F0OntkkFZGU6XPdFwXw-orxvtpCfsv556ra5fdbACMjqfZ3euwqXEHGRtkjMJpmku1-sV_xubQvCgbwuO8WRc-ukuWv3x2WTffkXypFKviEdNTXLBFki5ex4sblvaYhDUd4IrZwIjL-GRPQ9_X6WZITz7Lic5faKs1kr3mxXDSuK7u7tC2WSCom_I_CYR9_aIytJ_XkxixG-aa3LP9-jaOn0n7iZS8XNjaIlLHyqr2Of9wPvJ-A1NVv41EeaptXWs7VcSWg42-fUkofNyS2Qn1Qdo9DzVKmqzO9jMpe-8suwBVGl3gpr4nCwn4J8tIKOTzWX--xHkotH5w1TYaQAtzKs6ocyptylNdAD8WRm_FU3E3pdY5Ecarem7SK8ij5rh724GMiBXN9y9s6jBSwPoIAD9W-R4UoXo1mhsRNGiJ4EkC0U';
@@ -16,39 +16,34 @@ const CDNLIB_HEADERS = {
 
 // Инициализируем парсер один раз
 let parser = null;
-function getParser() {
+async function getParser() {
   if (parser) return parser;
-  parser = new AniParsec({
-    userAgent: 'WaifuTV/1.0 (https://waifutv.app)',
-  });
+  parser = await createParser();
   return parser;
 }
 
 /**
- * Получает видео по shikimori_id и episode с автоматическим fallback Kodik -> Aniboom.
+ * Получает видео по shikimori_id и episode.
  */
 async function fetchVideo(shikimoriId, episode = 1) {
-  const p = getParser();
+  const p = await getParser();
 
   console.log(`Fetching video: shikimori_id=${shikimoriId}, episode=${episode}`);
 
-  // aniparsec-ru сам пробует Kodik -> Aniboom и делает retry
-  const video = await p.getVideo({
-    shikimoriId: String(shikimoriId),
-    episode: Number(episode) || 1,
-  });
+  // getLink(shikimoriId, 'shikimori', episode, translationId?)
+  const [link, quality] = await p.getLink(String(shikimoriId), 'shikimori', Number(episode));
 
-  if (!video || !video.url) {
-    throw new Error('Не удалось получить ссылку на видео ни с одного источника');
+  if (!link) {
+    throw new Error('Не удалось получить ссылку на видео');
   }
 
-  console.log(`Video source: ${video.source}, quality: ${video.quality}`);
-  console.log(`URL: ${video.url}`);
+  console.log(`Video quality: ${quality}`);
+  console.log(`URL: ${link}`);
 
   return {
-    url: video.url,
-    quality: video.quality,
-    source: video.source,
+    url: link,
+    quality: quality,
+    source: 'kodik',
   };
 }
 
@@ -65,7 +60,7 @@ export default async function handler(req, res) {
 
   const { shikimori_id, episode } = query;
 
-  // === 1. Получение видео по shikimori_id + episode (с fallback) ===
+  // === 1. Получение видео по shikimori_id + episode ===
   if (shikimori_id) {
     try {
       const result = await fetchVideo(shikimori_id, episode || 1);

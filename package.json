@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "kodikwrapper": "^3.1.0"
+    "@aerosstube/anime-parser-kodik-ts": "^1.1.2"
   },
   "engines": {
     "node": ">=20.0.0"
